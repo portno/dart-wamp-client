@@ -2,6 +2,8 @@
 
 A library for Dart [WAMP] client.
 
+Changes with original: can be used only in browser applications
+
 ## Usage
 
 A simple usage example:
