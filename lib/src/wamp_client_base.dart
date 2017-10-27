@@ -163,20 +163,21 @@ class WampClient {
   ///     await wamp.connect('wss://example.com/ws');
   Future connect(String url) async {
     _ws = new WebSocket(url, ["wamp.2.json"]);
-    while(_ws.readyState != WebSocket.OPEN) await (new Future<dynamic>.delayed(new Duration(seconds: 1)));
-    _hello();
-
-    try {
-      await for (final mm in _ws.onMessage) {
-        String m = mm.data.toString();
-        final s = m is String ? m : new Utf8Decoder().convert(m as List<int>);
-        final msg = JSON.decode(s) as List<dynamic>;
-        _handle(msg);
+    
+    _ws.onOpen.listen((args) async {
+      _hello();
+      try {
+        await for (final mm in _ws.onMessage) {
+          String m = mm.data.toString();
+          final s = m is String ? m : new Utf8Decoder().convert(m as List<int>);
+          final msg = JSON.decode(s) as List<dynamic>;
+          _handle(msg);
+        }
+        print('disconnect');
+      } catch (e) {
+        print(e);
       }
-      print('disconnect');
-    } catch (e) {
-      print(e);
-    }
+    });
   }
 
   void _handle(List<dynamic> msg) {
