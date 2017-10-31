@@ -472,7 +472,7 @@ class WampClient {
     _sessionState = #establishing;
   }
 
-  bool _closed;
+  bool _closed = false;
   void goodbye([Map<String, dynamic> details = const <String, dynamic>{}]) {
     _closed = true;
     if (_sessionState != #established && _sessionState != #closing) {
