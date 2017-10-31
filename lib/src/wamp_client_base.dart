@@ -164,14 +164,16 @@ class WampClient {
   Future connect(String url) async {
     _ws = new WebSocket(url, ["wamp.2.json"]);
     _ws.onClose.listen((args) async {
-      if(_closed) return;
+      if (_closed) return;
       print("closed");
       await new Future<Null>.delayed(new Duration(milliseconds: 2000));
+      await connect(url);
     });
 
     _ws.onError.listen((args) async {
       print("error");
       await new Future<Null>.delayed(new Duration(milliseconds: 2000));
+      await connect(url);
     });
 
     _ws.onOpen.listen((args) async {
