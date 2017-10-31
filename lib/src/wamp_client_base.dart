@@ -163,10 +163,17 @@ class WampClient {
   ///     await wamp.connect('wss://example.com/ws');
   Future connect(String url) async {
     _ws = new WebSocket(url, ["wamp.2.json"]);
+    _ws.onClose.listen((args) async {
+      if(_closed) return;
+      print("closed");
+      await new Future<Null>.delayed(new Duration(milliseconds: 2000));
+    });
+
     _ws.onError.listen((args) async {
       print("error");
       await new Future<Null>.delayed(new Duration(milliseconds: 2000));
     });
+
     _ws.onOpen.listen((args) async {
       _hello();
       try {
@@ -465,7 +472,9 @@ class WampClient {
     _sessionState = #establishing;
   }
 
+  bool _closed;
   void goodbye([Map<String, dynamic> details = const <String, dynamic>{}]) {
+    _closed = true;
     if (_sessionState != #established && _sessionState != #closing) {
       throw new Exception('cant send Goodbye before session established.');
     }
