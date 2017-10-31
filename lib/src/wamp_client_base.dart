@@ -162,21 +162,28 @@ class WampClient {
   ///
   ///     await wamp.connect('wss://example.com/ws');
   Future connect(String url) async {
+    await _initializeWebsocket(url);
+  }
+
+  bool _initializing = false;
+  void _initializeWebsocket(String url) {
+    if (_initializing) {
+      print("someone else is initializing");
+      return;
+    }
+    _initializing = true;
     _ws = new WebSocket(url, ["wamp.2.json"]);
     _ws.onClose.listen((args) async {
+      _sessionState = #closed;
+      _initializing = false;
       if (_closed) return;
-      print("closed");
-      await new Future<Null>.delayed(new Duration(milliseconds: 2000));
-      await connect(url);
-    });
-
-    _ws.onError.listen((args) async {
-      print("error");
-      await new Future<Null>.delayed(new Duration(milliseconds: 2000));
-      await connect(url);
+      print("websocket closed");
+      await new Future<Null>.delayed(new Duration(milliseconds: 3000));
+      await _initializeWebsocket(url);
     });
 
     _ws.onOpen.listen((args) async {
+      _initializing = false;
       _hello();
       try {
         await for (final mm in _ws.onMessage) {
@@ -461,10 +468,7 @@ class WampClient {
     }
   }
 
-  bool _sentHello = false;
   void _hello() {
-    if(_sentHello) return;
-    
     if (_sessionState != #closed) {
       throw new Exception('cant send Hello after session established.');
     }
@@ -475,7 +479,6 @@ class WampClient {
       {'roles': defaultClientRoles},
     ]));
     _sessionState = #establishing;
-    _sentHello = true;
   }
 
   bool _closed = false;
