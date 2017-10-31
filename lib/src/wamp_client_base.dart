@@ -461,7 +461,10 @@ class WampClient {
     }
   }
 
+  bool _sentHello = false;
   void _hello() {
+    if(_sentHello) return;
+    
     if (_sessionState != #closed) {
       throw new Exception('cant send Hello after session established.');
     }
@@ -472,6 +475,7 @@ class WampClient {
       {'roles': defaultClientRoles},
     ]));
     _sessionState = #establishing;
+    _sentHello = true;
   }
 
   bool _closed = false;
