@@ -90,15 +90,12 @@ class WampRegistration {
   String toString() => 'WampRegistration(id: $id)';
 }
 
-/// onConnect handler type.
-typedef void WampOnConnect(WampClient client);
-
 /// WAMP Client.
 ///
 ///     var wamp = new WampClient('realm1')
-///       ..onConnect = (c) {
+///       ..onConnect.listen((c) {
 ///         // setup code here...
-///       };
+///       });
 ///
 ///     await wamp.connect('ws://localhost:8080/ws');
 ///
@@ -117,9 +114,12 @@ class WampClient {
   final Map<int, StreamController<dynamic>> _inflights;
   final Map<int, _Subscription> _subscriptions;
   final Map<int, WampProcedure> _registrations;
+  final StreamController<int> _onConnectController =
+      new StreamController<int>.broadcast();
+  bool _autoReconnect = false;
 
   /// create WAMP client with [realm].
-  WampClient(this.realm)
+  WampClient(this.realm, [this._autoReconnect = true])
       : _random = new Random.secure(),
         _inflights = <int, StreamController<dynamic>>{},
         _subscriptions = {},
@@ -156,7 +156,7 @@ class WampClient {
   ///
   ///     await wamp.connect('ws://localhost:8080/ws');
   ///
-  WampOnConnect onConnect = (_) {};
+  Stream get onConnect => _onConnectController.stream;
 
   /// connect to WAMP server at [url].
   ///
@@ -167,6 +167,7 @@ class WampClient {
 
   bool _initializing = false;
   void _initializeWebsocket(String url) {
+    print("ws init");
     if (_initializing) {
       print("someone else is initializing");
       return;
@@ -176,7 +177,7 @@ class WampClient {
     _ws.onClose.listen((args) async {
       _sessionState = #closed;
       _initializing = false;
-      if (_closed) return;
+      if (_closed || !_autoReconnect) return;
       print("websocket closed");
       await new Future<Null>.delayed(new Duration(milliseconds: 3000));
       await _initializeWebsocket(url);
@@ -199,6 +200,7 @@ class WampClient {
     });
   }
 
+  int counter = 5;
   void _handle(List<dynamic> msg) {
     switch (msg[0] as int) {
       case WampCode.hello:
@@ -218,7 +220,8 @@ class WampClient {
           _sessionState = #established;
           _sessionId = msg[1] as int;
           _sessionDetails = msg[2] as Map<String, dynamic>;
-          onConnect(this);
+          _onConnectController.add(counter);
+          counter++;
         } else if (_sessionState == #shutting_down) {
           // ignore.
         } else {
@@ -557,8 +560,11 @@ class WampClient {
   Future<WampArgs> call(String uri,
       [List<dynamic> args = const <dynamic>[],
       Map<String, dynamic> params = const <String, dynamic>{},
-      Map options = const <String, dynamic>{}]) {
+      Map options = const <String, dynamic>{}]) async {
     final cntl = new StreamController<WampArgs>();
+    if (_sessionState != #established) {
+      await onConnect.first;
+    }
     _goFlight(
         cntl, (code) => [WampCode.call, code, options, uri, args, params]);
     return cntl.stream.last;
@@ -572,16 +578,22 @@ class WampClient {
   ///       }
   ///     });
   Future<Stream<WampEvent>> subscribe(String topic,
-      [Map options = const <String, dynamic>{}]) {
+      [Map options = const <String, dynamic>{}]) async {
     final cntl = new StreamController<Stream<WampEvent>>();
+    if (_sessionState != #established) {
+      await onConnect.first;
+    }
     _goFlight(cntl, (code) => [WampCode.subscribe, code, options, topic]);
     return cntl.stream.last;
   }
 
-  Future _unsubscribe(int subid) {
+  Future _unsubscribe(int subid) async {
     _subscriptions.remove(subid);
 
     final cntl = new StreamController<Null>();
+    if (_sessionState != #established) {
+      await onConnect.first;
+    }
     _goFlight(cntl, (code) => [WampCode.unsubscribe, code, subid]);
     return cntl.stream.last;
   }
@@ -594,8 +606,11 @@ class WampClient {
     List<dynamic> args = const <dynamic>[],
     Map<String, dynamic> params = const <String, dynamic>{},
     Map options = const <String, dynamic>{},
-  ]) {
+  ]) async {
     final cntl = new StreamController<Null>();
+    if (_sessionState != #established) {
+      await onConnect.first;
+    }
     final code = _goFlight(
         cntl, (code) => [WampCode.publish, code, options, topic, args, params]);
 
