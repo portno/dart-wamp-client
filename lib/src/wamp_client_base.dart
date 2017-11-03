@@ -167,7 +167,6 @@ class WampClient {
 
   bool _initializing = false;
   void _initializeWebsocket(String url) {
-    print("ws init");
     if (_initializing) {
       print("someone else is initializing");
       return;
