@@ -117,9 +117,17 @@ class WampClient {
   final StreamController<int> _onConnectController =
       new StreamController<int>.broadcast();
   bool _autoReconnect = false;
+  List<String> _authMethods = ["ticket"];
+  String _authid;
+  String _role;
+  String _ticket;
 
   /// create WAMP client with [realm].
-  WampClient(this.realm, [this._autoReconnect = true])
+  WampClient(this.realm,
+      [this._autoReconnect = true,
+      this._ticket = null,
+      this._role = null,
+      this._authid = null])
       : _random = new Random.secure(),
         _inflights = <int, StreamController<dynamic>>{},
         _subscriptions = {},
@@ -420,7 +428,16 @@ class WampClient {
         break;
 
       case WampCode.challenge:
+        print("challenge");
+        _ws.send(JSON.encode([
+          WampCode.authenticate,
+          this._ticket,
+          {"extra": ""}
+        ]));
+        break;
       case WampCode.authenticate:
+        print("authenticate");
+        break;
       case WampCode.cancel:
       case WampCode.interrupt:
 
@@ -474,12 +491,23 @@ class WampClient {
     if (_sessionState != #closed) {
       throw new Exception('cant send Hello after session established.');
     }
-
-    _ws.send(JSON.encode([
+    Map<String, Object> payload = {
+      'roles': defaultClientRoles,
+    };
+    if (_ticket != null) {
+      payload["authrole"] = _role;
+      payload["authid"] = _authid;
+      payload["authmethods"] = _authMethods;
+    }
+    var message = [
       WampCode.hello,
       realm,
-      {'roles': defaultClientRoles},
-    ]));
+      payload
+    ];
+    if (_authMethods != null) {
+      //message[2]["user"]= _role;
+    }
+    _ws.send(JSON.encode(message));
     _sessionState = #establishing;
   }
 
