@@ -429,11 +429,11 @@ class WampClient {
 
       case WampCode.challenge:
         print("challenge");
-        _ws.send(JSON.encode([
+        send([
           WampCode.authenticate,
           this._ticket,
           {"extra": ""}
-        ]));
+        ]);
         break;
       case WampCode.authenticate:
         print("authenticate");
@@ -455,16 +455,16 @@ class WampClient {
     if (proc != null) {
       try {
         final result = proc(args);
-        _ws.send(JSON.encode([
+        send([
           WampCode.yield,
           code,
           <String, dynamic>{},
           result.args,
           result.params
-        ]));
+        ]);
       } on WampArgs catch (ex) {
         print('ex=$ex');
-        _ws.send(JSON.encode([
+        send([
           WampCode.error,
           WampCode.invocation,
           code,
@@ -472,15 +472,15 @@ class WampClient {
           'wamp.error',
           ex.args,
           ex.params
-        ]));
+        ]);
       } catch (ex) {
-        _ws.send(JSON.encode([
+        send([
           WampCode.error,
           WampCode.invocation,
           code,
           <String, dynamic>{},
           'error'
-        ]));
+        ]);
       }
     } else {
       print('unknown invocation: $msg');
@@ -507,7 +507,7 @@ class WampClient {
     if (_authMethods != null) {
       //message[2]["user"]= _role;
     }
-    _ws.send(JSON.encode(message));
+    send(message);
     _sessionState = #establishing;
   }
 
@@ -519,11 +519,11 @@ class WampClient {
     }
 
     void send_goodbye(String reason, Symbol next) {
-      _ws.send(JSON.encode([
+      send([
         WampCode.goodbye,
         details,
         reason,
-      ]));
+      ]);
       _sessionState = next;
     }
 
@@ -539,11 +539,11 @@ class WampClient {
       throw new Exception('cant send Goodbye before session established.');
     }
 
-    _ws.send(JSON.encode([
+    send([
       WampCode.abort,
       details,
       'abort',
-    ]));
+    ]);
     _sessionState = #closed;
   }
 
@@ -663,11 +663,22 @@ class WampClient {
   int _goFlight(StreamController<dynamic> cntl, dynamic data(int code)) {
     final code = _flightCode(cntl);
     try {
-      _ws.send(JSON.encode(data(code)));
+      send(data(code));
       return code;
     } catch (_) {
       _inflights.remove(code);
       rethrow;
     }
+  }
+
+  void send(dynamic obj){
+    _ws?.send(JSON.encode(obj, toEncodable: encode));
+  }
+
+  dynamic encode(dynamic item) {
+    if (item is DateTime) {
+      return item.toIso8601String();
+    }
+    return item;
   }
 }
