@@ -1,94 +1,4 @@
-import 'dart:html';
-import 'dart:async';
-import 'dart:convert';
-import 'dart:math';
-
-class WampCode {
-  static const int hello = 1;
-  static const int welcome = 2;
-  static const int abort = 3;
-  static const int challenge = 4;
-  static const int authenticate = 5;
-  static const int goodbye = 6;
-  static const int error = 8;
-  static const int publish = 16;
-  static const int published = 17;
-  static const int subscribe = 32;
-  static const int subscribed = 33;
-  static const int unsubscribe = 34;
-  static const int unsubscribed = 35;
-  static const int event = 36;
-  static const int call = 48;
-  static const int cancel = 49;
-  static const int result = 50;
-  static const int register = 64;
-  static const int registered = 65;
-  static const int unregister = 66;
-  static const int unregistered = 67;
-  static const int invocation = 68;
-  static const int interrupt = 69;
-  static const int yield = 70;
-}
-
-/// WAMP RPC arguments.
-class WampArgs {
-  /// Array arguments.
-  final List<dynamic> args;
-
-  /// Keyword arguments.
-  final Map<String, dynamic> params;
-
-  const WampArgs([
-    this.args = const <dynamic>[],
-    this.params = const <String, dynamic>{},
-  ]);
-
-  factory WampArgs._toWampArgs(List<dynamic> msg, [int idx = 4]) {
-    return new WampArgs(
-        idx < msg.length ? (msg[idx] as List<dynamic>) : (const <dynamic>[]),
-        idx + 1 < msg.length
-            ? (msg[idx + 1] as Map<String, dynamic>)
-            : (const <String, dynamic>{}));
-  }
-
-  List toJson() => <dynamic>[args, params];
-
-  String toString() => JSON.encode(this);
-}
-
-/// WAMP RPC procedure type.
-typedef WampArgs WampProcedure(WampArgs args);
-
-/// WAMP subscription event.
-class WampEvent {
-  final int id;
-  final Map details;
-  final WampArgs args;
-
-  const WampEvent(this.id, this.details, this.args);
-
-  Map toJson() => new Map<String, dynamic>()
-    ..['id'] = id
-    ..['details'] = details
-    ..['args'] = args.args
-    ..['params'] = args.params;
-
-  String toString() => JSON.encode(this);
-}
-
-class _Subscription {
-  final StreamController<WampEvent> cntl;
-
-  _Subscription() : cntl = new StreamController.broadcast();
-}
-
-/// WAMP RPC registration.
-class WampRegistration {
-  final int id;
-  const WampRegistration(this.id);
-
-  String toString() => 'WampRegistration(id: $id)';
-}
+part of wamp_client;
 
 /// WAMP Client.
 ///
@@ -106,32 +16,46 @@ class WampRegistration {
 class WampClient {
   /// realm.
   final String realm;
+  Random _random;
+  Map<int, StreamController<dynamic>> _inflights;
+  Map<int, _Subscription> _subscriptions;
+  Map<int, WampProcedure> _registrations;
+  StreamController<int> _onConnectController =
+      new StreamController<int>.broadcast();
+
   WebSocket _ws;
+  Serializer _serializer;
   var _sessionState = #closed;
   var _sessionId = 0;
   var _sessionDetails = const <String, dynamic>{};
-  final Random _random;
-  final Map<int, StreamController<dynamic>> _inflights;
-  final Map<int, _Subscription> _subscriptions;
-  final Map<int, WampProcedure> _registrations;
-  final StreamController<int> _onConnectController =
-      new StreamController<int>.broadcast();
+  String _subProtocol;
   bool _autoReconnect = false;
   List<String> _authMethods = ["ticket"];
   String _authid;
   String _role;
   String _ticket;
+  String _authMethod;
 
   /// create WAMP client with [realm].
   WampClient(this.realm,
-      [this._autoReconnect = true,
-      this._ticket = null,
-      this._role = null,
-      this._authid = null])
-      : _random = new Random.secure(),
-        _inflights = <int, StreamController<dynamic>>{},
-        _subscriptions = {},
-        _registrations = {};
+      {bool autoReconnect: true,
+      String authMethod: null,
+      String role = null,
+      String authid = null,
+      Serializer serializer = null,
+      String subProtocol = "wamp.2.json"}) {
+    _random = new Random.secure();
+    _inflights = <int, StreamController<dynamic>>{};
+    _subscriptions = {};
+    _registrations = {};
+    _serializer = serializer;
+    if (_serializer == null) _serializer = new JsonSerializer();
+    _autoReconnect = autoReconnect;
+    _authMethod = authMethod;
+    _role = role;
+    _authid = authid;
+    _subProtocol = subProtocol;
+  }
 
   /// default client roles.
   static const Map<String, dynamic> defaultClientRoles =
@@ -157,10 +81,10 @@ class WampClient {
 
   /// on [connect] handler.
   ///
-  ///     void myOnConnect(WampClient wamp) { ... }
-  ///
   ///     var wamp = new WampClient('realm1')
-  ///       ..onConnect = myOnConnect;
+  ///       ..onConnect.listen((args){
+  ///             //do stuff
+  ///       });
   ///
   ///     await wamp.connect('ws://localhost:8080/ws');
   ///
@@ -173,31 +97,21 @@ class WampClient {
     await _initializeWebsocket(url);
   }
 
-  bool _initializing = false;
   void _initializeWebsocket(String url) {
-    if (_initializing) {
-      print("someone else is initializing");
-      return;
-    }
-    _initializing = true;
-    _ws = new WebSocket(url, ["wamp.2.json"]);
+    _ws = new WebSocket(url, [_subProtocol]);
+    _serializer.webSocket = _ws;
     _ws.onClose.listen((args) async {
       _sessionState = #closed;
-      _initializing = false;
       if (_closed || !_autoReconnect) return;
-      print("websocket closed");
-      await new Future<Null>.delayed(new Duration(milliseconds: 3000));
+      await new Future<Null>.delayed(
+          new Duration(seconds: 3 + new Random().nextInt(5)));
       await _initializeWebsocket(url);
     });
 
     _ws.onOpen.listen((args) async {
-      _initializing = false;
       _hello();
       try {
-        await for (final mm in _ws.onMessage) {
-          String m = mm.data.toString();
-          final s = m is String ? m : new Utf8Decoder().convert(m as List<int>);
-          final msg = JSON.decode(s) as List<dynamic>;
+        await for (final msg in _serializer.read()) {
           _handle(msg);
         }
         print('disconnect');
@@ -207,10 +121,9 @@ class WampClient {
     });
   }
 
-  int counter = 5;
   void _handle(List<dynamic> msg) {
     switch (msg[0] as int) {
-      case WampCode.hello:
+      case WampCodes.hello:
         if (_sessionState == #establishing) {
           _sessionState = #closed;
         } else if (_sessionState == #established) {
@@ -222,13 +135,12 @@ class WampClient {
         }
         break;
 
-      case WampCode.welcome:
+      case WampCodes.welcome:
         if (_sessionState == #establishing) {
           _sessionState = #established;
           _sessionId = msg[1] as int;
           _sessionDetails = msg[2] as Map<String, dynamic>;
-          _onConnectController.add(counter);
-          counter++;
+          _onConnectController.add(null);
         } else if (_sessionState == #shutting_down) {
           // ignore.
         } else {
@@ -236,7 +148,7 @@ class WampClient {
         }
         break;
 
-      case WampCode.abort:
+      case WampCodes.abort:
         if (_sessionState == #shutting_down) {
           // ignore.
         } else if (_sessionState == #establishing) {
@@ -245,7 +157,7 @@ class WampClient {
         }
         break;
 
-      case WampCode.goodbye:
+      case WampCodes.goodbye:
         if (_sessionState == #shutting_down) {
           _sessionState = #closed;
           print('closed both!');
@@ -259,7 +171,7 @@ class WampClient {
         }
         break;
 
-      case WampCode.subscribed:
+      case WampCodes.subscribed:
         final code = msg[1] as int;
         final subid = msg[2] as int;
         final cntl = _inflights[code];
@@ -277,7 +189,7 @@ class WampClient {
         }
         break;
 
-      case WampCode.unsubscribed:
+      case WampCodes.unsubscribed:
         final code = msg[1] as int;
         final cntl = _inflights[code];
         if (cntl != null) {
@@ -289,7 +201,7 @@ class WampClient {
         }
         break;
 
-      case WampCode.published:
+      case WampCodes.published:
         final code = msg[1] as int;
         final cntl = _inflights[code];
         if (cntl != null) {
@@ -301,7 +213,7 @@ class WampClient {
         }
         break;
 
-      case WampCode.event:
+      case WampCodes.event:
         final subid = msg[1] as int;
         final pubid = msg[2] as int;
         final details = msg[3] as Map<String, dynamic>;
@@ -322,7 +234,7 @@ class WampClient {
         }
         break;
 
-      case WampCode.registered:
+      case WampCodes.registered:
         final code = msg[1] as int;
         final regid = msg[2] as int;
         final cntl = _inflights[code];
@@ -335,7 +247,7 @@ class WampClient {
         }
         break;
 
-      case WampCode.unregistered:
+      case WampCodes.unregistered:
         final code = msg[1] as int;
         final cntl = _inflights[code];
         if (cntl != null) {
@@ -347,11 +259,11 @@ class WampClient {
         }
         break;
 
-      case WampCode.invocation:
+      case WampCodes.invocation:
         _invocation(msg);
         break;
 
-      case WampCode.result:
+      case WampCodes.result:
         final code = msg[1] as int;
         final cntl = _inflights[code];
         if (cntl != null) {
@@ -364,10 +276,10 @@ class WampClient {
         }
         break;
 
-      case WampCode.error:
+      case WampCodes.error:
         final cmd = msg[1] as int;
         switch (cmd) {
-          case WampCode.call:
+          case WampCodes.call:
             final code = msg[2] as int;
             final cntl = _inflights[code];
             if (cntl != null) {
@@ -380,7 +292,7 @@ class WampClient {
             }
             break;
 
-          case WampCode.register:
+          case WampCodes.register:
             final code = msg[2] as int;
             final cntl = _inflights[code];
             if (cntl != null) {
@@ -393,7 +305,7 @@ class WampClient {
             }
             break;
 
-          case WampCode.unregister:
+          case WampCodes.unregister:
             final code = msg[2] as int;
             final cntl = _inflights[code];
             if (cntl != null) {
@@ -411,13 +323,13 @@ class WampClient {
         }
         break;
 
-      case WampCode.publish:
-      case WampCode.subscribe:
-      case WampCode.unsubscribe:
-      case WampCode.call:
-      case WampCode.register:
-      case WampCode.unregister:
-      case WampCode.yield:
+      case WampCodes.publish:
+      case WampCodes.subscribe:
+      case WampCodes.unsubscribe:
+      case WampCodes.call:
+      case WampCodes.register:
+      case WampCodes.unregister:
+      case WampCodes.yield:
         if (_sessionState == #shutting_down) {
           // ignore.
         } else if (_sessionState == #establishing) {
@@ -427,19 +339,19 @@ class WampClient {
         }
         break;
 
-      case WampCode.challenge:
+      case WampCodes.challenge:
         print("challenge");
         send([
-          WampCode.authenticate,
+          WampCodes.authenticate,
           this._ticket,
           {"extra": ""}
         ]);
         break;
-      case WampCode.authenticate:
+      case WampCodes.authenticate:
         print("authenticate");
         break;
-      case WampCode.cancel:
-      case WampCode.interrupt:
+      case WampCodes.cancel:
+      case WampCodes.interrupt:
 
       default:
         print('unexpected: $msg');
@@ -456,7 +368,7 @@ class WampClient {
       try {
         final result = proc(args);
         send([
-          WampCode.yield,
+          WampCodes.yield,
           code,
           <String, dynamic>{},
           result.args,
@@ -465,8 +377,8 @@ class WampClient {
       } on WampArgs catch (ex) {
         print('ex=$ex');
         send([
-          WampCode.error,
-          WampCode.invocation,
+          WampCodes.error,
+          WampCodes.invocation,
           code,
           <String, dynamic>{},
           'wamp.error',
@@ -475,8 +387,8 @@ class WampClient {
         ]);
       } catch (ex) {
         send([
-          WampCode.error,
-          WampCode.invocation,
+          WampCodes.error,
+          WampCodes.invocation,
           code,
           <String, dynamic>{},
           'error'
@@ -499,11 +411,7 @@ class WampClient {
       payload["authid"] = _authid;
       payload["authmethods"] = _authMethods;
     }
-    var message = [
-      WampCode.hello,
-      realm,
-      payload
-    ];
+    var message = [WampCodes.hello, realm, payload];
     if (_authMethods != null) {
       //message[2]["user"]= _role;
     }
@@ -520,7 +428,7 @@ class WampClient {
 
     void send_goodbye(String reason, Symbol next) {
       send([
-        WampCode.goodbye,
+        WampCodes.goodbye,
         details,
         reason,
       ]);
@@ -540,7 +448,7 @@ class WampClient {
     }
 
     send([
-      WampCode.abort,
+      WampCodes.abort,
       details,
       'abort',
     ]);
@@ -556,7 +464,7 @@ class WampClient {
   Future<WampRegistration> register(String uri, WampProcedure proc,
       [Map options = const <String, dynamic>{}]) {
     final cntl = new StreamController<int>();
-    _goFlight(cntl, (code) => [WampCode.register, code, options, uri]);
+    _goFlight(cntl, (code) => [WampCodes.register, code, options, uri]);
     return cntl.stream.last.then((regid) {
       _registrations[regid] = proc;
       return new WampRegistration(regid);
@@ -568,7 +476,7 @@ class WampClient {
   ///     wamp.unregister(your_rpc_id);
   Future<Null> unregister(WampRegistration reg) {
     final cntl = new StreamController<int>();
-    _goFlight(cntl, (code) => [WampCode.unregister, code, reg.id]);
+    _goFlight(cntl, (code) => [WampCodes.unregister, code, reg.id]);
     return cntl.stream.last.then((dynamic _) {
       _registrations.remove(reg.id);
       return null;
@@ -593,7 +501,7 @@ class WampClient {
       await onConnect.first;
     }
     _goFlight(
-        cntl, (code) => [WampCode.call, code, options, uri, args, params]);
+        cntl, (code) => [WampCodes.call, code, options, uri, args, params]);
     return cntl.stream.last;
   }
 
@@ -610,7 +518,7 @@ class WampClient {
     if (_sessionState != #established) {
       await onConnect.first;
     }
-    _goFlight(cntl, (code) => [WampCode.subscribe, code, options, topic]);
+    _goFlight(cntl, (code) => [WampCodes.subscribe, code, options, topic]);
     return cntl.stream.last;
   }
 
@@ -621,7 +529,7 @@ class WampClient {
     if (_sessionState != #established) {
       await onConnect.first;
     }
-    _goFlight(cntl, (code) => [WampCode.unsubscribe, code, subid]);
+    _goFlight(cntl, (code) => [WampCodes.unsubscribe, code, subid]);
     return cntl.stream.last;
   }
 
@@ -638,8 +546,8 @@ class WampClient {
     if (_sessionState != #established) {
       await onConnect.first;
     }
-    final code = _goFlight(
-        cntl, (code) => [WampCode.publish, code, options, topic, args, params]);
+    final code = _goFlight(cntl,
+        (code) => [WampCodes.publish, code, options, topic, args, params]);
 
     final dynamic acknowledge = options[_keyAcknowledge];
     if (acknowledge is bool && acknowledge) {
@@ -671,14 +579,7 @@ class WampClient {
     }
   }
 
-  void send(dynamic obj){
-    _ws?.send(JSON.encode(obj, toEncodable: encode));
-  }
-
-  dynamic encode(dynamic item) {
-    if (item is DateTime) {
-      return item.toIso8601String();
-    }
-    return item;
+  void send(dynamic obj) {
+    _serializer.write(obj);
   }
 }
