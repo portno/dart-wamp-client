@@ -8,7 +8,7 @@ class MsgPackSerializer extends Serializer {
   Stream<List<dynamic>> read() async* {
     await for (final mm in _webSocket.onMessage) {
       var m = mm.data as ByteBuffer;
-      yield unpack(m.asInt32List()) as List<dynamic>;
+      yield unpack(m.asUint8List()) as List<dynamic>;
     }
   }
 
