@@ -34,22 +34,23 @@ class WampClient {
   var _sessionDetails = const <String, dynamic>{};
   String _subProtocol;
   bool _autoReconnect = false;
-  List<String> _authMethods = ["ticket"];
+  List<String> _authMethods;
   String _authid;
   String _role;
   String _ticket;
-  String _authMethod;
   bool _shouldReconnect = true;
+  dynamic Function() _challenge;
 
   /// create WAMP client with [realm].
   WampClient(this.realm,
       {bool autoReconnect: true,
-      String authMethod: null,
+      List<String> authMethods: const [],
       String role = null,
       String authid = null,
       Serializer serializer = null,
       String subProtocol = "wamp.2.json",
-      int defaultRpcTimeout: 5000}) {
+      int defaultRpcTimeout: 5000,
+      dynamic Function() challenge: null}) {
     _random = new Random.secure();
     _inflights = <int, StreamController<dynamic>>{};
     _subscriptions = {};
@@ -57,10 +58,11 @@ class WampClient {
     _serializer = serializer;
     if (_serializer == null) _serializer = new JsonSerializer();
     _autoReconnect = autoReconnect;
-    _authMethod = authMethod;
+    _authMethods = authMethods;
     _role = role;
     _authid = authid;
     _subProtocol = subProtocol;
+    _challenge = challenge;
   }
 
   /// default client roles.
@@ -109,11 +111,11 @@ class WampClient {
     _ws = new WebSocket(url, [_subProtocol]);
     _serializer.webSocket = _ws;
     _ws.onClose.listen((args) async {
-      if(_sessionState != #closed){
+      if (_sessionState != #closed) {
         _onDisconnectController.add(0);
       }
       _sessionState = #closed;
-      
+
       if (_closed || !_autoReconnect || !_shouldReconnect) return;
       await new Future<Null>.delayed(
           new Duration(seconds: 3 + new Random().nextInt(5)));
@@ -353,9 +355,10 @@ class WampClient {
 
       case WampCodes.challenge:
         print("challenge");
+        var result = _challenge();
         send([
           WampCodes.authenticate,
-          this._ticket,
+          result,
           {"extra": ""}
         ]);
         break;
@@ -418,10 +421,14 @@ class WampClient {
     Map<String, Object> payload = {
       'roles': defaultClientRoles,
     };
-    if (_ticket != null) {
-      payload["authrole"] = _role;
-      payload["authid"] = _authid;
+    if (_authMethods.length > 0) { 
       payload["authmethods"] = _authMethods;
+    }
+    if(_authid !=null){
+      payload["authid"] = _authid;
+    }
+    if(_role != null){
+      payload["authrole"] = _role;
     }
     var message = [WampCodes.hello, realm, payload];
     if (_authMethods != null) {
