@@ -231,7 +231,6 @@ class WampClient {
         final subid = msg[1] as int;
         final pubid = msg[2] as int;
         final details = msg[3] as Map<String, dynamic>;
-        print(msg);
         final event = new WampEvent(
             pubid,
             details,
@@ -354,7 +353,6 @@ class WampClient {
         break;
 
       case WampCodes.challenge:
-        print("challenge");
         var result = _challenge();
         send([
           WampCodes.authenticate,
