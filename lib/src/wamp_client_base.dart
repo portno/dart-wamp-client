@@ -21,7 +21,10 @@ class WampClient {
   Map<int, StreamController<dynamic>> _inflights;
   Map<int, _Subscription> _subscriptions;
   Map<int, WampProcedure> _registrations;
-  StreamController<int> _onConnectController =
+  final StreamController<int> _onConnectController =
+      new StreamController<int>.broadcast();
+
+  final StreamController<int> _onDisconnectController =
       new StreamController<int>.broadcast();
 
   WebSocket _ws;
@@ -93,6 +96,8 @@ class WampClient {
   ///
   Stream get onConnect => _onConnectController.stream;
 
+  Stream get onDisconnect => _onDisconnectController.stream;
+
   /// connect to WAMP server at [url].
   ///
   ///     await wamp.connect('wss://example.com/ws');
@@ -104,7 +109,11 @@ class WampClient {
     _ws = new WebSocket(url, [_subProtocol]);
     _serializer.webSocket = _ws;
     _ws.onClose.listen((args) async {
+      if(_sessionState != #closed){
+        _onDisconnectController.add(0);
+      }
       _sessionState = #closed;
+      
       if (_closed || !_autoReconnect || !_shouldReconnect) return;
       await new Future<Null>.delayed(
           new Duration(seconds: 3 + new Random().nextInt(5)));
@@ -457,6 +466,7 @@ class WampClient {
     ]);
     _shouldReconnect = false;
     _sessionState = #closed;
+    _ws.close();
   }
 
   /// register RPC at [uri] with [proc].
