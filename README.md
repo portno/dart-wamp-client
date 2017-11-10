@@ -17,14 +17,11 @@ A simple usage example:
     import 'package:wamp_client/wamp_client.dart';
 
     main() async {
-      var wamp = new WampClient('your.realm1')
-        ..onConnect = (c) {
-          c.subscribe('your.topic').then((sub) async {
-            await for (var event in sub) {
-              ...
-            }
-          });
-        };
+      var wampClient = new WampClient(
+        "myrealm",
+        autoReconnect: true,
+        subProtocol: "wamp.2.msgpack",
+        serializer: new MsgPackSerializer());
 
       await wamp.connect('ws://localhost:8080/ws');
     }
