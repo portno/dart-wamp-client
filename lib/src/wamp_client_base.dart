@@ -17,6 +17,7 @@ class WampClient {
   /// realm.
   final String realm;
   Random _random;
+  int _timeout = 0;
   Map<int, StreamController<dynamic>> _inflights;
   Map<int, _Subscription> _subscriptions;
   Map<int, WampProcedure> _registrations;
@@ -35,6 +36,7 @@ class WampClient {
   String _role;
   String _ticket;
   String _authMethod;
+  bool _shouldReconnect = true;
 
   /// create WAMP client with [realm].
   WampClient(this.realm,
@@ -43,7 +45,8 @@ class WampClient {
       String role = null,
       String authid = null,
       Serializer serializer = null,
-      String subProtocol = "wamp.2.json"}) {
+      String subProtocol = "wamp.2.json",
+      int defaultRpcTimeout: 5000}) {
     _random = new Random.secure();
     _inflights = <int, StreamController<dynamic>>{};
     _subscriptions = {};
@@ -102,7 +105,7 @@ class WampClient {
     _serializer.webSocket = _ws;
     _ws.onClose.listen((args) async {
       _sessionState = #closed;
-      if (_closed || !_autoReconnect) return;
+      if (_closed || !_autoReconnect || !_shouldReconnect) return;
       await new Future<Null>.delayed(
           new Duration(seconds: 3 + new Random().nextInt(5)));
       await _initializeWebsocket(url);
@@ -452,6 +455,7 @@ class WampClient {
       details,
       'abort',
     ]);
+    _shouldReconnect = false;
     _sessionState = #closed;
   }
 
@@ -497,11 +501,21 @@ class WampClient {
       Map<String, dynamic> params = const <String, dynamic>{},
       Map options = const <String, dynamic>{}]) async {
     final cntl = new StreamController<WampArgs>();
+    if (_timeout > 0) {
+      new Future<Null>.delayed(new Duration(milliseconds: _timeout))
+          .then((args) {
+        if (cntl.isClosed) return;
+        cntl.addError(new WampArgs(<dynamic>["RPC timed out"]));
+        cntl.close();
+        _ws.close();
+      });
+    }
     if (_sessionState != #established) {
       await onConnect.first;
     }
     _goFlight(
         cntl, (code) => [WampCodes.call, code, options, uri, args, params]);
+
     return cntl.stream.last;
   }
 
