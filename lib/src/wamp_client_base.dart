@@ -502,6 +502,8 @@ class WampClient {
     });
   }
 
+  final StreamController _beforeCall = new StreamController.broadcast(sync: true);
+  Stream get beforeCall => _beforeCall.stream;
   /// call RPC with [args] and [params].
   ///
   ///     wamp.call('your.rpc.name', ['myarg', 3], {'hello': 'world'})
@@ -513,7 +515,7 @@ class WampClient {
   ///       });
   Future<WampArgs> call(String uri,
       [List<dynamic> args = const <dynamic>[],
-      Map<String, dynamic> params = const <String, dynamic>{},
+      Map<String, dynamic> params = null,
       Map options = const <String, dynamic>{}]) async {
     final cntl = new StreamController<WampArgs>();
     if (_timeout > 0) {
@@ -525,9 +527,13 @@ class WampClient {
         _ws.close();
       });
     }
+    if(params == null){
+      params = <String, dynamic>{};
+    }
     if (_sessionState != #established) {
       await onConnect.first;
     }
+    _beforeCall.add(<String, dynamic>{"args": args, "params": params});
     _goFlight(
         cntl, (code) => [WampCodes.call, code, options, uri, args, params]);
 
