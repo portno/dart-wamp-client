@@ -27,6 +27,9 @@ class WampClient {
   final StreamController<int> _onDisconnectController =
       new StreamController<int>.broadcast();
 
+  final StreamController<WampArgs> _onAuthenticationErrorController =
+      new StreamController<WampArgs>.broadcast();
+
   WebSocket _ws;
   Serializer _serializer;
   var _sessionState = #closed;
@@ -35,11 +38,11 @@ class WampClient {
   String _subProtocol;
   bool _autoReconnect = false;
   List<String> _authMethods;
-  String _authid;
+  String authid;
   String _role;
   String _ticket;
   bool _shouldReconnect = true;
-  dynamic Function() _challenge;
+  dynamic Function() challenge;
 
   /// create WAMP client with [realm].
   WampClient(this.realm,
@@ -60,9 +63,9 @@ class WampClient {
     _autoReconnect = autoReconnect;
     _authMethods = authMethods;
     _role = role;
-    _authid = authid;
+    this.authid = authid;
     _subProtocol = subProtocol;
-    _challenge = challenge;
+    this.challenge = challenge;
   }
 
   /// default client roles.
@@ -99,6 +102,8 @@ class WampClient {
   Stream get onConnect => _onConnectController.stream;
 
   Stream get onDisconnect => _onDisconnectController.stream;
+
+Stream get onAuthenticationError => _onAuthenticationErrorController.stream;
 
   /// connect to WAMP server at [url].
   ///
@@ -169,6 +174,7 @@ class WampClient {
           _sessionState = #closed;
           print('aborted $msg');
         }
+        _onAuthenticationErrorController.add(new WampArgs._toWampArgs(msg, 3));
         break;
 
       case WampCodes.goodbye:
@@ -183,6 +189,7 @@ class WampClient {
         } else {
           throw new Exception('on: $_sessionState, msg: $msg');
         }
+        _onDisconnectController.add(null);
         break;
 
       case WampCodes.subscribed:
@@ -353,7 +360,8 @@ class WampClient {
         break;
 
       case WampCodes.challenge:
-        var result = _challenge();
+        var result = challenge();
+        print(result);
         send([
           WampCodes.authenticate,
           result,
@@ -422,8 +430,8 @@ class WampClient {
     if (_authMethods.length > 0) { 
       payload["authmethods"] = _authMethods;
     }
-    if(_authid !=null){
-      payload["authid"] = _authid;
+    if(authid !=null){
+      payload["authid"] = authid;
     }
     if(_role != null){
       payload["authrole"] = _role;
