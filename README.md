@@ -26,9 +26,4 @@ A simple usage example:
       await wamp.connect('ws://localhost:8080/ws');
     }
 
-## Features and bugs
-
-Please file feature requests and bugs at the [issue tracker][tracker].
-
-[tracker]: /portno/dart-wamp-client/issues
 [WAMP]: http://wamp-proto.org
