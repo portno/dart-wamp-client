@@ -30,5 +30,5 @@ A simple usage example:
 
 Please file feature requests and bugs at the [issue tracker][tracker].
 
-[tracker]: issues
+[tracker]: /portno/dart-wamp-client/issues
 [WAMP]: http://wamp-proto.org
