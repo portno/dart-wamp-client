@@ -54,7 +54,7 @@ class WampClient {
       String subProtocol = "wamp.2.json",
       int defaultRpcTimeout: 5000,
       dynamic Function() challenge: null}) {
-    _random = new Random.secure();
+    _random = new Random();
     _inflights = <int, StreamController<dynamic>>{};
     _subscriptions = {};
     _registrations = {};
