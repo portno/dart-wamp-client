@@ -9,4 +9,6 @@ environment:
   
 dependencies:
   msgpack2:
-    git: https://github.com/butlermatt/msgpack2
+    git: 
+      url: https://github.com/butlermatt/msgpack2.git
+      ref: "v2"
