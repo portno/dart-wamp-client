@@ -14,5 +14,5 @@ class WampEvent {
     ..['args'] = args.args
     ..['params'] = args.params;
 
-  String toString() => JSON.encode(this);
+  String toString() => jsonEncode(this);
 }

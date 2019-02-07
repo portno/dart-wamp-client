@@ -360,9 +360,9 @@ Stream get onAuthenticationError => _onAuthenticationErrorController.stream;
         break;
 
       case WampCodes.challenge:
-        var result = challenge();
+        dynamic result = challenge();
         print(result);
-        send([
+        send(<dynamic>[
           WampCodes.authenticate,
           result,
           {"extra": ""}
@@ -510,7 +510,7 @@ Stream get onAuthenticationError => _onAuthenticationErrorController.stream;
     });
   }
 
-  final StreamController _beforeCall = new StreamController.broadcast(sync: true);
+  final StreamController _beforeCall = new StreamController<Null>.broadcast(sync: true);
   Stream get beforeCall => _beforeCall.stream;
   /// call RPC with [args] and [params].
   ///

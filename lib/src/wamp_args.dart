@@ -24,7 +24,7 @@ class WampArgs {
 
   List toJson() => <dynamic>[args, params];
 
-  String toString() => JSON.encode(this);
+  String toString() => jsonEncode(this);
 }
 
 

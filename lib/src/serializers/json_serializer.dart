@@ -9,13 +9,13 @@ class JsonSerializer extends Serializer {
     await for (final mm in _webSocket.onMessage) {
       var m = mm.data.toString();
       final s = m is String ? m : new Utf8Decoder().convert(m as List<int>);
-      yield JSON.decode(s) as List<dynamic>;
+      yield jsonDecode(s) as List<dynamic>;
     }
   }
 
   @override
   void write(dynamic obj) {
-    _webSocket.send(JSON.encode(obj, toEncodable: _encode));
+    _webSocket.send(jsonEncode(obj, toEncodable: _encode));
   }
 
   @override

@@ -9,7 +9,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 
-import 'package:msgpack/msgpack.dart';
+import 'package:msgpack2/msgpack2.dart';
 
 part 'src/serializers/serializer.dart';
 part 'src/serializers/json_serializer.dart';
